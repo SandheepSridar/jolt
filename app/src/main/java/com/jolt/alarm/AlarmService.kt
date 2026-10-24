@@ -3,8 +3,10 @@ package com.jolt.alarm
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioManager
@@ -23,6 +25,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.jolt.JoltApp
 import com.jolt.R
@@ -48,6 +51,8 @@ class AlarmService : Service() {
     private var player: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var savedAlarmVolume: Int? = null
+    private var lockedVolume: Int? = null
+    private var volumeGuardRegistered = false
     private var volume = START_VOLUME
     private var targetVolume = 1f
 
@@ -125,6 +130,7 @@ class AlarmService : Service() {
             savedAlarmVolume = current
             audio.setStreamVolume(AudioManager.STREAM_ALARM, floor, 0)
         }
+        lockVolume(maxOf(current, floor))
 
         val candidates = listOfNotNull(
             alarm.soundUri?.toUri(),
@@ -133,6 +139,28 @@ class AlarmService : Service() {
             Settings.System.DEFAULT_RINGTONE_URI,
         )
         player = candidates.firstNotNullOfOrNull(::createPlayer)
+    }
+
+    /**
+     * Turning the volume down is an easy way to ignore the alarm, so while it rings any drop
+     * below [level] is undone straight away. The listener exists only while ringing.
+     */
+    private fun lockVolume(level: Int) {
+        lockedVolume = level
+        ContextCompat.registerReceiver(
+            this, volumeGuard, IntentFilter(VOLUME_CHANGED_ACTION), ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        volumeGuardRegistered = true
+    }
+
+    private val volumeGuard = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val level = lockedVolume ?: return
+            val audio = getSystemService(AudioManager::class.java)
+            if (audio.getStreamVolume(AudioManager.STREAM_ALARM) < level) {
+                audio.setStreamVolume(AudioManager.STREAM_ALARM, level, 0)
+            }
+        }
     }
 
     private fun createPlayer(uri: Uri): MediaPlayer? = try {
@@ -203,6 +231,11 @@ class AlarmService : Service() {
 
     private fun stopEverything() {
         handler.removeCallbacksAndMessages(null)
+        lockedVolume = null
+        if (volumeGuardRegistered) {
+            unregisterReceiver(volumeGuard)
+            volumeGuardRegistered = false
+        }
         player?.run { stop(); release() }
         player = null
         vibrator?.cancel()
@@ -231,6 +264,8 @@ class AlarmService : Service() {
         private const val RAMP_STEP = 0.03f // Full volume after about 30 s.
         private const val DUCKED_VOLUME = 0.3f
         private const val DUCK_TIMEOUT_MS = 60_000L
+        /** Not in the public SDK, but sent by the system on every stream volume change. */
+        private const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
 
         private const val EXTRA_ID = "alarm_id"
         private const val ACTION_FIRE = "com.jolt.FIRE"
