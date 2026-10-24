@@ -60,7 +60,11 @@ class UpdateController(private val updater: Updater, private val scope: Coroutin
         if (state is UpdateState.Checking || state is UpdateState.Downloading) return
         state = UpdateState.Checking
         scope.launch {
-            state = updater.check()?.let { UpdateState.Available(it) } ?: UpdateState.UpToDate
+            state = try {
+                updater.check()?.let { UpdateState.Available(it) } ?: UpdateState.UpToDate
+            } catch (e: Exception) {
+                UpdateState.Failed(null, e.message ?: "Couldn't check for updates")
+            }
         }
     }
 

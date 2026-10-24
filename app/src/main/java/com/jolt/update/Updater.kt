@@ -37,24 +37,26 @@ class Updater(private val context: Context) {
     val installedVersionCode: Int = BuildConfig.VERSION_CODE
     val installedVersionName: String = BuildConfig.VERSION_NAME
 
-    /** A newer published release, or null (none published, offline, GitHub unreachable). */
+    /** A newer published release, or null if this is the newest. Throws if GitHub can't be reached. */
     suspend fun check(): ReleaseInfo? = withContext(Dispatchers.IO) {
-        runCatching {
-            val conn = open("latest.json")
-            try {
-                if (conn.responseCode != 200) return@runCatching null
-                val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-                ReleaseInfo(
-                    versionCode = json.getInt("version_code"),
-                    versionName = json.getString("version_name"),
-                    sha256 = json.getString("sha256"),
-                    size = json.optLong("size"),
-                    notes = json.optString("notes"),
-                )
-            } finally {
-                conn.disconnect()
-            }
-        }.getOrNull()?.takeIf { it.versionCode > installedVersionCode }
+        val conn = runCatching { open("latest.json").also { it.connect() } }
+            .getOrElse { throw IllegalStateException("Couldn't check for updates", it) }
+        try {
+            if (conn.responseCode != 200) error("Couldn't check for updates (HTTP ${conn.responseCode})")
+            val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+            ReleaseInfo(
+                versionCode = json.getInt("version_code"),
+                versionName = json.getString("version_name"),
+                sha256 = json.getString("sha256"),
+                size = json.optLong("size"),
+                notes = json.optString("notes"),
+            ).takeIf { it.versionCode > installedVersionCode }
+        } catch (e: Exception) {
+            if (e is IllegalStateException) throw e
+            throw IllegalStateException("Couldn't check for updates", e)
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /** Downloads and verifies the APK, reporting 0–1 progress. Throws with a readable message on failure. */
