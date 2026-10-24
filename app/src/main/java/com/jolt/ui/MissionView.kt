@@ -35,6 +35,7 @@ import com.jolt.mission.bestMatch
 import com.jolt.ui.components.CameraView
 import com.jolt.ui.components.Viewfinder
 import com.jolt.ui.components.WithCameraPermission
+import com.jolt.ui.components.describeCameraFailure
 
 /** [obj] is null when the object was deleted. */
 private class Target(val obj: MissionObject?, val references: List<FloatArray>)
@@ -111,7 +112,7 @@ private fun Scanner(
                 if (done) passed = true
             },
             onRelease = session::close,
-            onError = { onError("The camera couldn't start.") },
+            onError = { onError(describeCameraFailure(it)) },
             modifier = Modifier.fillMaxSize(),
         )
         Viewfinder(progress = if (passed) 1f else progress, locked = passed || matching, modifier = Modifier.fillMaxSize())

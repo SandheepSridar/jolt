@@ -76,6 +76,7 @@ import com.jolt.mission.ScanSession
 import com.jolt.ui.components.CameraView
 import com.jolt.ui.components.Viewfinder
 import com.jolt.ui.components.WithCameraPermission
+import com.jolt.ui.components.describeCameraFailure
 import com.jolt.ui.theme.Amber
 import com.jolt.ui.theme.OnAmber
 import kotlinx.coroutines.launch
@@ -227,14 +228,14 @@ fun RegisterObjectScreen(onBack: () -> Unit, onSaved: (Long) -> Unit) {
     var name by remember { mutableStateOf("") }
     var strictness by remember { mutableStateOf(Strictness.Normal) }
     var saving by remember { mutableStateOf(false) }
-    var cameraError by remember { mutableStateOf(false) }
+    var cameraError by remember { mutableStateOf<String?>(null) }
     val mainExecutor = remember { ContextCompat.getMainExecutor(context) }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black)) {
             WithCameraPermission(denied = { CameraMessage("Jolt needs the camera to photograph your object.") }) {
-                if (cameraError) {
-                    CameraMessage("The camera couldn't start.")
+                if (cameraError != null) {
+                    CameraMessage(cameraError!!)
                 } else {
                     CameraView(
                         onFrame = { frame ->
@@ -244,7 +245,7 @@ fun RegisterObjectScreen(onBack: () -> Unit, onSaved: (Long) -> Unit) {
                             }
                         },
                         onRelease = session::close,
-                        onError = { cameraError = true },
+                        onError = { cameraError = describeCameraFailure(it) },
                         modifier = Modifier.fillMaxSize(),
                     )
                     Viewfinder(progress = null, modifier = Modifier.fillMaxSize())
@@ -255,71 +256,73 @@ fun RegisterObjectScreen(onBack: () -> Unit, onSaved: (Long) -> Unit) {
             }
         }
 
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) {
-            Text(
-                when (shots.size) {
-                    0 -> "Frame your object and take a photo"
-                    MAX_SHOTS -> "All set. Name it and save."
-                    else -> "Nice. Add another angle, or name it and save."
-                },
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                "Pick something that stays put. Shots from a couple of angles make the morning scan easier.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                repeat(MAX_SHOTS) { i ->
-                    val shot = shots.getOrNull(i)
-                    val bitmap = remember(shot) { shot?.first?.asImageBitmap() }
-                    Box(
-                        Modifier
-                            .padding(end = 8.dp)
-                            .size(56.dp)
-                            .clip(MaterialTheme.shapes.small)
-                            .background(MaterialTheme.colorScheme.surfaceContainer)
-                            .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), MaterialTheme.shapes.small),
-                    ) {
-                        bitmap?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                Surface(
-                    onClick = { captureNext.set(true) },
-                    enabled = shots.size < MAX_SHOTS && !cameraError,
-                    shape = CircleShape,
-                    color = if (shots.size < MAX_SHOTS) Amber else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    border = BorderStroke(4.dp, MaterialTheme.colorScheme.background),
-                    modifier = Modifier.size(72.dp).border(2.dp, Amber, CircleShape),
-                ) {}
-            }
-
-            if (shots.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.take(30) },
-                    label = { Text("Name") },
-                    placeholder = { Text("e.g. Coffee machine") },
-                    singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(12.dp))
-                StrictnessPicker(strictness) { strictness = it }
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        saving = true
-                        scope.launch { onSaved(repo.createObject(name.trim(), strictness, shots.toList())) }
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp)) {
+                Text(
+                    when (shots.size) {
+                        0 -> "Frame your object and take a photo"
+                        MAX_SHOTS -> "All set. Name it and save."
+                        else -> "Nice. Add another angle, or name it and save."
                     },
-                    enabled = name.isNotBlank() && !saving,
-                    colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = OnAmber),
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                ) { Text("Save object") }
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    "Pick something that stays put. Shots from a couple of angles make the morning scan easier.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    repeat(MAX_SHOTS) { i ->
+                        val shot = shots.getOrNull(i)
+                        val bitmap = remember(shot) { shot?.first?.asImageBitmap() }
+                        Box(
+                            Modifier
+                                .padding(end = 8.dp)
+                                .size(56.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), MaterialTheme.shapes.small),
+                        ) {
+                            bitmap?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        onClick = { captureNext.set(true) },
+                        enabled = shots.size < MAX_SHOTS && cameraError == null,
+                        shape = CircleShape,
+                        color = if (shots.size < MAX_SHOTS) Amber else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        border = BorderStroke(4.dp, MaterialTheme.colorScheme.background),
+                        modifier = Modifier.size(72.dp).border(2.dp, Amber, CircleShape),
+                    ) {}
+                }
+
+                if (shots.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it.take(30) },
+                        label = { Text("Name") },
+                        placeholder = { Text("e.g. Coffee machine") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.medium,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    StrictnessPicker(strictness) { strictness = it }
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            saving = true
+                            scope.launch { onSaved(repo.createObject(name.trim(), strictness, shots.toList())) }
+                        },
+                        enabled = name.isNotBlank() && !saving,
+                        colors = ButtonDefaults.buttonColors(containerColor = Amber, contentColor = OnAmber),
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                    ) { Text("Save object") }
+                }
             }
         }
     }

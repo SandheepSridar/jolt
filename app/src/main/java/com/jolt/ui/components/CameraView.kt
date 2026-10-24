@@ -1,6 +1,7 @@
 package com.jolt.ui.components
 
 import android.graphics.Bitmap
+import android.util.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -77,7 +78,8 @@ fun CameraView(
                     } catch (e: Throwable) {
                         // Includes LinkageError from a broken native library, so the mission
                         // falls back to hold-to-dismiss instead of hanging.
-                        ContextCompat.getMainExecutor(context).execute { errorCallback(e) }
+                        Log.e(TAG, "Frame processing failed", e)
+                        ContextCompat.getMainExecutor(context).execute { errorCallback(FrameProcessingException(e)) }
                     }
                 })
                 // Wait for layout so the viewport (the visible part of the preview) is known. With
@@ -90,10 +92,12 @@ fun CameraView(
                         cameraProvider.unbindAll()
                         cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, group.build())
                     } catch (e: Exception) {
+                        Log.e(TAG, "Camera bind failed", e)
                         errorCallback(e)
                     }
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Camera provider failed", e)
                 errorCallback(e)
             }
         }, ContextCompat.getMainExecutor(context))
@@ -107,4 +111,18 @@ fun CameraView(
     }
 
     AndroidView(factory = { previewView }, modifier = modifier)
+}
+
+private const val TAG = "JoltCamera"
+
+/** The camera ran, but processing a frame (e.g. the image model) failed. */
+class FrameProcessingException(cause: Throwable) : Exception(cause)
+
+/** One user-facing line saying which step failed, plus the root cause for bug reports. */
+fun describeCameraFailure(e: Throwable): String {
+    val step = if (e is FrameProcessingException) "The scanner couldn't start." else "The camera couldn't start."
+    var root: Throwable = e
+    while (root.cause != null && root.cause !== root) root = root.cause!!
+    val detail = listOfNotNull(root.javaClass.simpleName.ifBlank { root.javaClass.name }, root.message?.take(120)).joinToString(": ")
+    return "$step\n($detail)"
 }
