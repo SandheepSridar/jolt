@@ -2,6 +2,9 @@
 -keep class com.google.mediapipe.** { *; }
 # Protobuf-lite reads generated message fields by name.
 -keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
+# Flogger (MediaPipe's logger) finds its caller by scanning the stack for its own class
+# names. Renamed, it throws "no caller found on the stack" and the model never loads.
+-keep class com.google.common.flogger.** { *; }
 -dontwarn com.google.mediapipe.**
 -dontwarn com.google.protobuf.**
 -dontwarn javax.lang.model.**
