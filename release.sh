@@ -98,7 +98,7 @@ import datetime, json, sys
 code, name, sha, size, notes = sys.argv[1:]
 print(json.dumps({
     "version_code": int(code), "version_name": name, "sha256": sha, "size": int(size),
-    "notes": notes, "built_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "notes": notes, "built_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }, indent=2))
 PY
 
