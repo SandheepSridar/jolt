@@ -95,8 +95,7 @@ class AlarmService : Service() {
 
     private fun notification(alarm: Alarm?): Notification {
         val ringIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, RingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            this, 0, RingActivity.intent(this),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val title = alarm?.let { "%d:%02d".format(it.hour, it.minute) } ?: getString(R.string.app_name)

@@ -10,18 +10,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.jolt.alarm.AlarmService
 import com.jolt.ui.AlarmListScreen
 import com.jolt.ui.EditAlarmScreen
 import com.jolt.ui.ObjectsScreen
+import com.jolt.ui.RingActivity
 import com.jolt.ui.RegisterObjectScreen
 import com.jolt.ui.TestScanScreen
 import com.jolt.ui.theme.JoltTheme
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -29,6 +34,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // A force stop clears our system alarm; opening the app is the only way back, so re-arm here.
         lifecycleScope.launch { jolt.scheduler.scheduleNext() }
+        // If an alarm is ringing while the app is open, the ring screen is the only useful place.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AlarmService.ringing.filterNotNull().collect { startActivity(RingActivity.intent(this@MainActivity)) }
+            }
+        }
         enableEdgeToEdge()
         setContent {
             JoltTheme {

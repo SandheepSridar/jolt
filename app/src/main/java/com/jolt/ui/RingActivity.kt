@@ -1,5 +1,7 @@
 package com.jolt.ui
 
+import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -57,6 +59,11 @@ import java.time.format.DateTimeFormatter
 
 /** Full-screen alarm shown over the lock screen. Lives exactly as long as AlarmService is ringing. */
 class RingActivity : ComponentActivity() {
+    companion object {
+        fun intent(context: Context) = Intent(context, RingActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -82,7 +89,8 @@ class RingActivity : ComponentActivity() {
                         alarm != null -> shown = alarm
                         done -> Unit
                         // Opened from a stale notification, or the alarm was stopped elsewhere.
-                        else -> { delay(if (shown == null) 1500 else 0); finish() }
+                        // Opened at fire time, possibly before the service has loaded the alarm.
+                        else -> { delay(if (shown == null) 4000 else 0); finish() }
                     }
                 }
                 LaunchedEffect(done) {
