@@ -51,6 +51,8 @@ cp version.properties version.properties.bak
 trap 'mv version.properties.bak version.properties; echo "Release failed; version not changed." >&2' ERR
 OLD_CODE=$(prop VERSION_CODE version.properties)
 OLD_NAME=$(prop VERSION_NAME version.properties)
+# gh creates release tags on GitHub, so fetch them before asking whether this version shipped.
+git fetch -q --tags origin
 if git rev-parse -q --verify "refs/tags/v$OLD_NAME" >/dev/null; then
   NEW_CODE=$((OLD_CODE + 1))
   IFS=. read -r MA MI PA <<<"$OLD_NAME"
