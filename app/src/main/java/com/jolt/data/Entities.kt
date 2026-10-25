@@ -32,12 +32,18 @@ data class Alarm(
     val vibrate: Boolean = true,
     val snoozeMinutes: Int = 5,
     val maxSnoozes: Int = 1,
-    /** Object to scan to dismiss. Null means no mission. */
+    /** Your own photographed object to scan to dismiss. At most one of this and [category]. */
     val objectId: Long? = null,
     val snoozedUntil: Long? = null,
     val snoozeCount: Int = 0,
+    /** A generic mission ([com.jolt.mission.Category] name), e.g. any sink. */
+    val category: String? = null,
+    /** Up to 5 alarm sound URIs, newline-separated; one is picked at random each time. Wins over [soundUri]. */
+    val randomSounds: String? = null,
 ) {
     val repeats: Boolean get() = days != 0
+    val hasMission: Boolean get() = objectId != null || category != null
+    val randomSoundList: List<String> get() = randomSounds?.lines()?.filter { it.isNotBlank() }.orEmpty()
 }
 
 @Entity(tableName = "objects")

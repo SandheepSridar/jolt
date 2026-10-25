@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.jolt.alarm.AlarmService
 import com.jolt.data.Alarm
 import com.jolt.jolt
+import com.jolt.mission.Mission
 import com.jolt.ui.components.HoldButton
 import com.jolt.ui.theme.JoltTheme
 import kotlinx.coroutines.delay
@@ -129,16 +130,21 @@ private fun RingScreen(alarm: Alarm, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     var phase by remember { mutableStateOf(Phase.Wake) }
-    val objectName by produceState<String?>(null, alarm.objectId) {
-        value = alarm.objectId?.let { context.jolt.repository.obj(it)?.name }
+    val mission = remember(alarm) { Mission.of(alarm) }
+    val missionLabel by produceState<String?>(null, mission) {
+        value = when (mission) {
+            is Mission.Generic -> "Scan ${mission.category.withArticle}"
+            is Mission.Own -> context.jolt.repository.obj(mission.objectId)?.name?.let { "Scan your $it" }
+            null -> null
+        }
     }
-    val hasMission = alarm.objectId != null
+    val hasMission = mission != null
 
     AnimatedContent(phase, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "phase") { current ->
         when (current) {
             Phase.Wake -> WakeScreen(
                 alarm = alarm,
-                missionName = objectName,
+                missionLabel = missionLabel,
                 hasMission = hasMission,
                 onStart = {
                     if (hasMission) {
@@ -151,7 +157,7 @@ private fun RingScreen(alarm: Alarm, onDismiss: () -> Unit) {
                 onSnooze = { AlarmService.snooze(context, alarm.id) },
             )
             Phase.Mission -> MissionView(
-                objectId = alarm.objectId!!,
+                mission = mission!!,
                 onPassed = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onDismiss()
@@ -164,7 +170,7 @@ private fun RingScreen(alarm: Alarm, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun WakeScreen(alarm: Alarm, missionName: String?, hasMission: Boolean, onStart: () -> Unit, onSnooze: () -> Unit) {
+private fun WakeScreen(alarm: Alarm, missionLabel: String?, hasMission: Boolean, onStart: () -> Unit, onSnooze: () -> Unit) {
     val context = LocalContext.current
     val now by minuteTicker()
     val clock = remember(now) {
@@ -195,7 +201,7 @@ private fun WakeScreen(alarm: Alarm, missionName: String?, hasMission: Boolean, 
             if (hasMission) {
                 Icon(Icons.Rounded.CameraAlt, null, Modifier.size(22.dp))
                 Spacer(Modifier.size(10.dp))
-                Text(missionName?.let { "Scan your $it" } ?: "Start mission", style = MaterialTheme.typography.titleMedium)
+                Text(missionLabel ?: "Start mission", style = MaterialTheme.typography.titleMedium)
             } else {
                 Text("Dismiss", style = MaterialTheme.typography.titleMedium)
             }

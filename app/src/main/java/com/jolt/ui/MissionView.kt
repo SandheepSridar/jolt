@@ -27,28 +27,34 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.jolt.data.MissionObject
 import com.jolt.jolt
+import com.jolt.mission.CategoryScorer
+import com.jolt.mission.FrameScorer
 import com.jolt.mission.MatchTracker
-import com.jolt.mission.ScanSession
-import com.jolt.mission.bestMatch
+import com.jolt.mission.Mission
+import com.jolt.mission.ObjectScorer
 import com.jolt.ui.components.CameraView
 import com.jolt.ui.components.Viewfinder
 import com.jolt.ui.components.WithCameraPermission
 import com.jolt.ui.components.describeCameraFailure
 
-/** [obj] is null when the object was deleted. */
-private class Target(val obj: MissionObject?, val references: List<FloatArray>)
+/** Everything the scanner needs, loaded up front. [problem] is set if the mission can't run. */
+private class Prepared(
+    val title: String,
+    val subject: String,
+    val newScorer: (() -> FrameScorer)?,
+    val problem: String? = null,
+)
 
 /**
- * The photo mission: live camera, viewfinder and a ring that fills as the registered object
- * comes into view. Calls [onPassed] once, after several matching frames in a row.
+ * The photo mission: live camera, viewfinder and a ring that fills as the target comes into
+ * view. Calls [onPassed] once, after several matching frames in a row.
  *
  * If the camera can't be used, [fallback] is shown instead so the alarm can always be stopped.
  */
 @Composable
 fun MissionView(
-    objectId: Long,
+    mission: Mission,
     onPassed: () -> Unit,
     fallback: @Composable (reason: String) -> Unit,
     modifier: Modifier = Modifier,
@@ -56,38 +62,47 @@ fun MissionView(
     showScore: Boolean = false,
 ) {
     val context = LocalContext.current
-    val target by produceState<Target?>(null, objectId) {
-        val repo = context.jolt.repository
-        val obj = repo.obj(objectId)
-        value = Target(obj, if (obj == null) emptyList() else repo.shotsFor(objectId).map { it.vector() })
+    val prepared by produceState<Prepared?>(null, mission) {
+        val app = context.applicationContext
+        value = when (mission) {
+            is Mission.Generic -> Prepared("Find", mission.category.withArticle, { CategoryScorer(app, mission.category) })
+            is Mission.Own -> {
+                val repo = context.jolt.repository
+                val obj = repo.obj(mission.objectId)
+                val references = if (obj == null) emptyList() else repo.shotsFor(obj.id).map { it.vector() }
+                when {
+                    obj == null -> Prepared("", "", null, "The object for this alarm was deleted.")
+                    references.isEmpty() -> Prepared("", "", null, "This object has no reference photos.")
+                    else -> Prepared("Find your", obj.name, { ObjectScorer(app, references, obj.threshold) })
+                }
+            }
+        }
     }
 
     var error by remember { mutableStateOf<String?>(null) }
-    val current = target
+    val current = prepared
     WithCameraPermission(denied = { fallback("Jolt doesn't have camera access.") }) {
         when {
             error != null -> fallback(error!!)
             current == null -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            current.obj == null -> fallback("The object for this alarm was deleted.")
-            current.references.isEmpty() -> fallback("This object has no reference photos.")
-            else -> Scanner(current.obj, current.references, onPassed, onMatching, showScore, onError = { error = it }, modifier)
+            current.newScorer == null -> fallback(current.problem ?: "This mission can't run.")
+            else -> Scanner(current, current.newScorer, onPassed, onMatching, showScore, onError = { error = it }, modifier)
         }
     }
 }
 
 @Composable
 private fun Scanner(
-    obj: MissionObject,
-    references: List<FloatArray>,
+    prepared: Prepared,
+    newScorer: () -> FrameScorer,
     onPassed: () -> Unit,
     onMatching: () -> Unit,
     showScore: Boolean,
     onError: (String) -> Unit,
     modifier: Modifier,
 ) {
-    val context = LocalContext.current
-    val session = remember { ScanSession(context.applicationContext) }
-    val tracker = remember(obj) { MatchTracker(obj.threshold) }
+    val scorer = remember(prepared) { newScorer() }
+    val tracker = remember(scorer) { MatchTracker(scorer.threshold, floor = scorer.floor) }
     // Written from the analysis thread; snapshot state is safe to update from any thread.
     var score by remember { mutableFloatStateOf(0f) }
     var progress by remember { mutableFloatStateOf(0f) }
@@ -103,15 +118,14 @@ private fun Scanner(
         CameraView(
             onFrame = { frame ->
                 if (passed) return@CameraView
-                val vector = session.embed(frame) ?: return@CameraView
-                val s = bestMatch(vector, references)
+                val s = scorer.score(frame)
                 val done = tracker.offer(s)
                 score = s
                 progress = tracker.progress(s)
                 matching = tracker.streak > 0
                 if (done) passed = true
             },
-            onRelease = session::close,
+            onRelease = scorer::close,
             onError = { onError(describeCameraFailure(it)) },
             modifier = Modifier.fillMaxSize(),
         )
@@ -121,8 +135,8 @@ private fun Scanner(
             Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Find your", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f))
-            Text(obj.name, style = MaterialTheme.typography.headlineMedium, color = Color.White, textAlign = TextAlign.Center)
+            Text(prepared.title, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.7f))
+            Text(prepared.subject, style = MaterialTheme.typography.headlineMedium, color = Color.White, textAlign = TextAlign.Center)
             Spacer(Modifier.weight(1f))
             val hint = when {
                 passed -> "Got it"
@@ -133,7 +147,7 @@ private fun Scanner(
             if (showScore) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Similarity %.2f · needs %.2f".format(score, obj.threshold),
+                    "Score %.2f · needs %.2f".format(score, scorer.threshold),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.7f),
                 )

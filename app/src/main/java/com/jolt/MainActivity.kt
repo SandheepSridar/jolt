@@ -19,6 +19,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.jolt.alarm.AlarmService
+import com.jolt.mission.Category
+import com.jolt.mission.Mission
 import com.jolt.ui.AlarmListScreen
 import com.jolt.ui.EditAlarmScreen
 import com.jolt.ui.ObjectsScreen
@@ -70,7 +72,14 @@ class MainActivity : ComponentActivity() {
                         ObjectsScreen(
                             onBack = { nav.popBackStack() },
                             onAdd = { nav.navigate("objects/new") },
-                            onTest = { nav.navigate("objects/$it/test") },
+                            onTest = { mission ->
+                                nav.navigate(
+                                    when (mission) {
+                                        is Mission.Own -> "objects/${mission.objectId}/test"
+                                        is Mission.Generic -> "categories/${mission.category.name}/test"
+                                    },
+                                )
+                            },
                         )
                     }
                     composable("objects/new") {
@@ -83,7 +92,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("objects/{id}/test", arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
-                        TestScanScreen(objectId = entry.arguments?.getLong("id") ?: 0L, onBack = { nav.popBackStack() })
+                        TestScanScreen(Mission.Own(entry.arguments?.getLong("id") ?: 0L), onBack = { nav.popBackStack() })
+                    }
+                    composable("categories/{name}/test") { entry ->
+                        val category = Category.fromName(entry.arguments?.getString("name")) ?: Category.Sink
+                        TestScanScreen(Mission.Generic(category), onBack = { nav.popBackStack() })
                     }
                 }
             }

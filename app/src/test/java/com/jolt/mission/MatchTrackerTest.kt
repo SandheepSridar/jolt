@@ -48,4 +48,12 @@ class MatchTrackerTest {
         assertEquals(1f, bestMatch(a, listOf(floatArrayOf(1f, 0f), a)), 1e-6f)
         assertEquals(0f, bestMatch(a, emptyList()), 0f)
     }
+
+    @Test fun customFloorShiftsWhereTheRingStartsFilling() {
+        val detector = MatchTracker(threshold = 0.5f, floor = 0.2f)
+        assertEquals(0f, detector.progress(0.2f), 0f)
+        assertTrue(detector.progress(0.35f) > 0f)
+        // The default floor (0.35) would still show an empty ring at 0.35.
+        assertEquals(0f, MatchTracker(threshold = 0.5f).progress(0.35f), 0f)
+    }
 }

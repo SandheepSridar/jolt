@@ -58,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jolt.alarm.AlarmTimes
 import com.jolt.data.Alarm
 import com.jolt.jolt
+import com.jolt.mission.Category
+import com.jolt.mission.lowercaseUnlessAcronym
 import com.jolt.ui.theme.Amber
 import com.jolt.ui.theme.OnAmber
 import kotlinx.coroutines.launch
@@ -116,7 +118,8 @@ fun AlarmListScreen(onEdit: (Long) -> Unit, onObjects: () -> Unit) {
             items(list.orEmpty(), key = { it.id }) { alarm ->
                 AlarmCard(
                     alarm = alarm,
-                    missionName = objects.firstOrNull { it.id == alarm.objectId }?.name,
+                    missionLabel = Category.fromName(alarm.category)?.let { "Scan any ${it.displayName.lowercaseUnlessAcronym()}" }
+                        ?: objects.firstOrNull { it.id == alarm.objectId }?.name?.let { "Scan $it" },
                     onClick = { onEdit(alarm.id) },
                     onToggle = { scope.launch { repo.setEnabled(alarm, it) } },
                 )
@@ -164,7 +167,7 @@ private fun NextAlarmHeader(nextAt: Long?, now: Long) {
 }
 
 @Composable
-private fun AlarmCard(alarm: Alarm, missionName: String?, onClick: () -> Unit, onToggle: (Boolean) -> Unit) {
+private fun AlarmCard(alarm: Alarm, missionLabel: String?, onClick: () -> Unit, onToggle: (Boolean) -> Unit) {
     val context = LocalContext.current
     val clock = formatClock(context, alarm.hour, alarm.minute)
     Surface(
@@ -187,7 +190,7 @@ private fun AlarmCard(alarm: Alarm, missionName: String?, onClick: () -> Unit, o
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                MissionTag(missionName)
+                MissionTag(missionLabel)
             }
             Switch(checked = alarm.enabled, onCheckedChange = onToggle)
         }
@@ -195,9 +198,9 @@ private fun AlarmCard(alarm: Alarm, missionName: String?, onClick: () -> Unit, o
 }
 
 @Composable
-private fun MissionTag(name: String?) {
-    val (icon, text, color) = if (name != null) {
-        Triple(Icons.Rounded.CameraAlt, "Scan $name", MaterialTheme.colorScheme.primary)
+private fun MissionTag(label: String?) {
+    val (icon, text, color) = if (label != null) {
+        Triple(Icons.Rounded.CameraAlt, label, MaterialTheme.colorScheme.primary)
     } else {
         Triple(Icons.Rounded.ErrorOutline, "No mission", MaterialTheme.colorScheme.error)
     }

@@ -133,7 +133,7 @@ class AlarmService : Service() {
         lockVolume(maxOf(current, floor))
 
         val candidates = listOfNotNull(
-            alarm.soundUri?.toUri(),
+            pickSound(alarm)?.toUri(),
             RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM),
             Settings.System.DEFAULT_ALARM_ALERT_URI,
             Settings.System.DEFAULT_RINGTONE_URI,
@@ -161,6 +161,18 @@ class AlarmService : Service() {
                 audio.setStreamVolume(AudioManager.STREAM_ALARM, level, 0)
             }
         }
+    }
+
+    /** The alarm's sound, or a random one of its picks, never the same one twice in a row. */
+    private fun pickSound(alarm: Alarm): String? {
+        val sounds = alarm.randomSoundList
+        if (sounds.isEmpty()) return alarm.soundUri
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val key = "last_sound_${alarm.id}"
+        val picked = pickRandomSound(sounds, prefs.getString(key, null)) ?: return alarm.soundUri
+        prefs.edit().putString(key, picked).apply()
+        Log.i(TAG, "Random sound: ${runCatching { RingtoneManager.getRingtone(this, picked.toUri())?.getTitle(this) }.getOrNull() ?: picked}")
+        return picked
     }
 
     private fun createPlayer(uri: Uri): MediaPlayer? = try {
@@ -259,6 +271,7 @@ class AlarmService : Service() {
 
     companion object {
         private const val TAG = "AlarmService"
+        private const val PREFS = "alarm_service"
         private const val NOTIFICATION_ID = 1
         private const val START_VOLUME = 0.15f
         private const val RAMP_STEP = 0.03f // Full volume after about 30 s.

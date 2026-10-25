@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +74,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jolt.data.MissionObject
 import com.jolt.data.Strictness
 import com.jolt.jolt
+import com.jolt.mission.Category
+import com.jolt.mission.Mission
 import com.jolt.mission.ScanSession
 import com.jolt.ui.components.CameraView
 import com.jolt.ui.components.Viewfinder
@@ -84,7 +88,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ObjectsScreen(onBack: () -> Unit, onAdd: () -> Unit, onTest: (Long) -> Unit) {
+fun ObjectsScreen(onBack: () -> Unit, onAdd: () -> Unit, onTest: (Mission) -> Unit) {
     val context = LocalContext.current
     val repo = context.jolt.repository
     val scope = rememberCoroutineScope()
@@ -135,10 +139,11 @@ fun ObjectsScreen(onBack: () -> Unit, onAdd: () -> Unit, onTest: (Long) -> Unit)
                     photoPath = objShots.firstOrNull()?.photoPath,
                     photoCount = objShots.size,
                     onStrictness = { scope.launch { repo.setStrictness(obj, it) } },
-                    onTest = { onTest(obj.id) },
+                    onTest = { onTest(Mission.Own(obj.id)) },
                     onDelete = { deleting = obj },
                 )
             }
+            item { CategoriesCard(onTest = { onTest(Mission.Generic(it)) }) }
         }
     }
 
@@ -155,6 +160,31 @@ fun ObjectsScreen(onBack: () -> Unit, onAdd: () -> Unit, onTest: (Long) -> Unit)
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/** Generic missions need no setup; this is just a place to try them before relying on one. */
+@Composable
+private fun CategoriesCard(onTest: (Category) -> Unit) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Categories", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Any object of these types works, not just yours. Tap one to try a scan.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Category.entries.forEach { category ->
+                    AssistChip(
+                        onClick = { onTest(category) },
+                        label = { Text(category.displayName) },
+                        leadingIcon = { Icon(Icons.Rounded.CenterFocusStrong, null, Modifier.size(18.dp)) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -337,7 +367,7 @@ private fun CameraMessage(text: String) {
 
 /** Try the mission without an alarm ringing, with the live similarity score shown. */
 @Composable
-fun TestScanScreen(objectId: Long, onBack: () -> Unit) {
+fun TestScanScreen(mission: Mission, onBack: () -> Unit) {
     var attempt by remember { mutableIntStateOf(0) }
     var passed by remember { mutableStateOf(false) }
 
@@ -362,7 +392,7 @@ fun TestScanScreen(objectId: Long, onBack: () -> Unit) {
         } else {
             key(attempt) {
                 MissionView(
-                    objectId = objectId,
+                    mission = mission,
                     onPassed = { passed = true },
                     showScore = true,
                     fallback = { CameraMessage(it) },

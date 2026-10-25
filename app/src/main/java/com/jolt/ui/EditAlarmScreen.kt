@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -73,6 +74,8 @@ import com.jolt.alarm.AlarmTimes
 import com.jolt.data.Alarm
 import com.jolt.data.MissionObject
 import com.jolt.jolt
+import com.jolt.mission.Category
+import com.jolt.mission.lowercaseUnlessAcronym
 import com.jolt.ui.components.WheelPicker
 import com.jolt.ui.theme.Amber
 import com.jolt.ui.theme.OnAmber
@@ -106,8 +109,12 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
     var snoozeMinutes by rememberSaveable { mutableStateOf(5) }
     var maxSnoozes by rememberSaveable { mutableStateOf(1) }
     var objectId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var pickedDefaultObject by rememberSaveable { mutableStateOf(false) }
+    var category by rememberSaveable { mutableStateOf<String?>(null) }
+    var randomSounds by rememberSaveable { mutableStateOf<String?>(null) }
+    var pickedDefaultMission by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var choosingSoundMode by remember { mutableStateOf(false) }
+    var choosingRandomSounds by remember { mutableStateOf(false) }
 
     LaunchedEffect(alarmId) {
         if (alarmId == 0L) return@LaunchedEffect
@@ -116,25 +123,28 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
             if (!loaded) {
                 hour = it.hour; minute = it.minute; days = it.days; label = it.label
                 soundUri = it.soundUri; vibrate = it.vibrate; snoozeMinutes = it.snoozeMinutes
-                maxSnoozes = it.maxSnoozes; objectId = it.objectId
+                maxSnoozes = it.maxSnoozes; objectId = it.objectId; category = it.category
+                randomSounds = it.randomSounds
                 loaded = true
             }
         }
     }
-    // New alarms default to the most recent object, because an alarm without a mission is easy to ignore.
+    // New alarms always start with a mission, because an alarm without one is easy to ignore:
+    // your most recent object if you have one, otherwise any sink.
     LaunchedEffect(objects) {
-        if (alarmId == 0L && !pickedDefaultObject && objects.isNotEmpty()) {
-            objectId = objects.first().id
-            pickedDefaultObject = true
+        if (alarmId == 0L && !pickedDefaultMission) {
+            if (objects.isNotEmpty()) objectId = objects.first().id else category = Category.Sink.name
+            pickedDefaultMission = true
         }
     }
-    LaunchedEffect(newObjectId) { newObjectId?.let { objectId = it } }
+    LaunchedEffect(newObjectId) { newObjectId?.let { objectId = it; category = null } }
 
     val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             @Suppress("DEPRECATION")
             val uri = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             soundUri = uri?.toString()
+            randomSounds = null
         }
     }
 
@@ -142,7 +152,7 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
         val alarm = (original ?: Alarm(hour = hour, minute = minute)).copy(
             hour = hour, minute = minute, days = days, label = label.trim(), soundUri = soundUri,
             vibrate = vibrate, snoozeMinutes = snoozeMinutes, maxSnoozes = maxSnoozes,
-            objectId = objectId, enabled = true,
+            objectId = objectId, category = category, randomSounds = randomSounds, enabled = true,
         )
         repo.saveAlarm(alarm)
         val next = AlarmTimes.nextOccurrence(hour, minute, days, ZonedDateTime.now())
@@ -196,8 +206,10 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
             MissionPicker(
                 objects = objects,
                 photoFor = { id -> shots.firstOrNull { it.objectId == id }?.photoPath },
-                selected = objectId,
-                onSelect = { objectId = it },
+                selectedObject = objectId,
+                selectedCategory = Category.fromName(category),
+                onSelectObject = { objectId = it; category = null },
+                onSelectCategory = { category = it?.name; objectId = null },
                 onAdd = onAddObject,
             )
 
@@ -215,7 +227,9 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
             Section("Sound & snooze")
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
                 Column {
-                    val soundName = remember(soundUri) {
+                    val randomCount = randomSounds?.lines()?.count { it.isNotBlank() } ?: 0
+                    val soundName = remember(soundUri, randomCount) {
+                        if (randomCount > 0) return@remember "Random · $randomCount ${if (randomCount == 1) "sound" else "sounds"}"
                         val uri = soundUri?.toUri() ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
                         uri?.let { runCatching { RingtoneManager.getRingtone(context, it)?.getTitle(context) }.getOrNull() } ?: "Default"
                     }
@@ -223,15 +237,7 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
                         headlineContent = { Text("Sound") },
                         supportingContent = { Text(soundName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickableItem {
-                            soundPicker.launch(
-                                Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
-                                    .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                                    .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-                                    .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                                    .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, soundUri?.toUri()),
-                            )
-                        },
+                        modifier = Modifier.clip(MaterialTheme.shapes.large).clickableItem { choosingSoundMode = true },
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     ListItem(
@@ -275,6 +281,43 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
         }
     }
 
+    if (choosingSoundMode) {
+        AlertDialog(
+            onDismissRequest = { choosingSoundMode = false },
+            title = { Text("Alarm sound") },
+            text = {
+                Column {
+                    SoundModeRow("One sound", "Always play the same sound") {
+                        choosingSoundMode = false
+                        soundPicker.launch(
+                            Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, soundUri?.toUri()),
+                        )
+                    }
+                    SoundModeRow("Random", "Pick up to $MAX_RANDOM_SOUNDS; a different one can play each time") {
+                        choosingSoundMode = false
+                        choosingRandomSounds = true
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { choosingSoundMode = false }) { Text("Cancel") } },
+        )
+    }
+    if (choosingRandomSounds) {
+        RandomSoundsDialog(
+            initial = randomSounds?.lines()?.filter { it.isNotBlank() }.orEmpty(),
+            onDismiss = { choosingRandomSounds = false },
+            onConfirm = {
+                randomSounds = it.joinToString("\n")
+                choosingRandomSounds = false
+            },
+        )
+    }
+
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -291,6 +334,20 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
 }
 
 private fun Modifier.clickableItem(onClick: () -> Unit) = clickable(onClick = onClick)
+
+@Composable
+private fun SoundModeRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 @Composable
 private fun Section(title: String) {
@@ -364,14 +421,30 @@ private fun DayToggles(days: Int, onChange: (Int) -> Unit) {
 private fun MissionPicker(
     objects: List<MissionObject>,
     photoFor: (Long) -> String?,
-    selected: Long?,
-    onSelect: (Long?) -> Unit,
+    selectedObject: Long?,
+    selectedCategory: Category?,
+    onSelectObject: (Long) -> Unit,
+    onSelectCategory: (Category?) -> Unit,
     onAdd: () -> Unit,
 ) {
+    Text("Anything like…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(8.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Category.entries.forEach { category ->
+            FilterChip(
+                selected = category == selectedCategory,
+                onClick = { onSelectCategory(category) },
+                label = { Text("Any ${category.displayName.lowercaseUnlessAcronym()}") },
+            )
+        }
+    }
+    Spacer(Modifier.height(16.dp))
+    Text("Your objects", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(8.dp))
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(objects, key = { it.id }) { obj ->
             val photo by thumbnail(photoFor(obj.id))
-            MissionTile(obj.name, selected == obj.id, onClick = { onSelect(obj.id) }) {
+            MissionTile(obj.name, selectedObject == obj.id, onClick = { onSelectObject(obj.id) }) {
                 photo?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
             }
         }
@@ -381,12 +454,12 @@ private fun MissionPicker(
             }
         }
         item {
-            MissionTile("No mission", selected == null, onClick = { onSelect(null) }) {
+            MissionTile("No mission", selectedObject == null && selectedCategory == null, onClick = { onSelectCategory(null) }) {
                 Icon(Icons.Rounded.DoNotDisturbAlt, null, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
-    if (selected == null) {
+    if (selectedObject == null && selectedCategory == null) {
         Text(
             "Without a mission, one tap turns this alarm off.",
             style = MaterialTheme.typography.bodySmall,
