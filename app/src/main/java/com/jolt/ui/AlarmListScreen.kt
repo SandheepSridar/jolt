@@ -56,6 +56,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jolt.alarm.AlarmTimes
+import com.jolt.alarm.RingGuard
 import com.jolt.data.Alarm
 import com.jolt.jolt
 import com.jolt.mission.Category
@@ -228,7 +229,7 @@ private fun EmptyAlarms() {
     }
 }
 
-/** Only the permissions an alarm can't work without. Re-checked every time the screen resumes. */
+/** Only the permissions an alarm can't work without, plus the ring guard. Re-checked every time the screen resumes. */
 @Composable
 private fun PermissionBanners() {
     val context = LocalContext.current
@@ -250,7 +251,14 @@ private fun PermissionBanners() {
     }
     val packageUri = "package:${context.packageName}".toUri()
 
+    val guardOff = remember(resumed) { !RingGuard.isEnabled(context) }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (guardOff) {
+            Banner("Force stop is in reach", "Turn on \"Jolt ring guard\" in Accessibility to block Settings while an alarm rings.") {
+                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+        }
         if (missingExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Banner("Alarms can't ring on time", "Allow Jolt to set alarms.") {
                 context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, packageUri))

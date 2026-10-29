@@ -49,6 +49,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.jolt.alarm.AlarmService
 import com.jolt.data.Alarm
 import com.jolt.jolt
@@ -73,6 +76,22 @@ class RingActivity : ComponentActivity() {
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean =
         keyCode in VOLUME_KEYS || super.onKeyUp(keyCode, event)
 
+    /**
+     * The notification shade is one swipe from App info and Force stop. Hidden bars make that a
+     * deliberate two-swipe gesture. Re-applied on focus because dialogs bring the bars back.
+     */
+    private fun hideSystemBars() {
+        WindowCompat.getInsetsController(window, window.decorView).run {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -84,6 +103,7 @@ class RingActivity : ComponentActivity() {
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enableEdgeToEdge()
+        hideSystemBars()
         onBackPressedDispatcher.addCallback(this) { /* Back doesn't get you out of a mission. */ }
 
         setContent {
