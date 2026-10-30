@@ -86,9 +86,9 @@ class UpdateController(private val updater: Updater, private val scope: Coroutin
         }
     }
 
-    /** Back from the "Install unknown apps" screen: carry on if it was allowed. */
+    /** Back in the app: check again, or, back from the "Install unknown apps" screen, carry on if it was allowed. */
     fun onResume() {
-        val pending = state as? UpdateState.NeedsPermission ?: return
+        val pending = state as? UpdateState.NeedsPermission ?: return check()
         if (updater.canInstall()) {
             state = UpdateState.Available(pending.info)
             updater.install(pending.file)
@@ -96,14 +96,12 @@ class UpdateController(private val updater: Updater, private val scope: Coroutin
     }
 }
 
-/** Checks GitHub once each time the alarm list opens, never in the background. */
+/** Checks GitHub each time the alarm list comes to the foreground, never in the background. */
 @Composable
 fun rememberUpdateController(): UpdateController {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val controller = remember { UpdateController(Updater(context.applicationContext), scope) }
-    LaunchedEffect(Unit) { controller.check() }
-
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     LaunchedEffect(lifecycleState) {
         if (lifecycleState == Lifecycle.State.RESUMED) controller.onResume()
