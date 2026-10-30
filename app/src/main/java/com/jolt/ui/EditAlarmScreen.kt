@@ -203,7 +203,7 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
 
             Section("Repeat")
             DayToggles(days) { days = it }
-            // Always shown so it's discoverable; only one-off alarms can use it.
+            // Always shown so it's discoverable; turning it on makes the alarm one-off.
             val oneOff = days == 0
             Surface(
                 shape = MaterialTheme.shapes.large,
@@ -213,10 +213,16 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
                 ListItem(
                     headlineContent = { Text("Delete after dismissing") },
                     supportingContent = {
-                        Text(if (oneOff) "Remove this alarm once you turn it off" else "One-time alarms only: turn off all repeat days to use it")
+                        Text(if (oneOff) "Remove this alarm once you turn it off" else "Turning this on makes it a one-time alarm")
                     },
                     trailingContent = {
-                        Switch(checked = oneOff && deleteAfterDismiss, onCheckedChange = { deleteAfterDismiss = it }, enabled = oneOff)
+                        Switch(
+                            checked = oneOff && deleteAfterDismiss,
+                            onCheckedChange = {
+                                deleteAfterDismiss = it
+                                if (it) days = 0
+                            },
+                        )
                     },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 )
