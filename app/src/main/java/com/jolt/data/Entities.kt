@@ -40,6 +40,8 @@ data class Alarm(
     val category: String? = null,
     /** Up to 5 alarm sound URIs, newline-separated; one is picked at random each time. Wins over [soundUri]. */
     val randomSounds: String? = null,
+    /** One-off alarms only: delete the alarm once it's dismissed instead of just switching it off. */
+    val deleteAfterDismiss: Boolean = false,
 ) {
     val repeats: Boolean get() = days != 0
     val hasMission: Boolean get() = objectId != null || category != null

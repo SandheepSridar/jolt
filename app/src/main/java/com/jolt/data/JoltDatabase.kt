@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [Alarm::class, MissionObject::class, ReferenceShot::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class JoltDatabase : RoomDatabase() {
@@ -19,7 +19,7 @@ abstract class JoltDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): JoltDatabase =
             Room.databaseBuilder(context, JoltDatabase::class.java, "jolt.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
 
         /** v1.1: generic category missions and random alarm sounds. */
@@ -27,6 +27,13 @@ abstract class JoltDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE alarms ADD COLUMN category TEXT")
                 db.execSQL("ALTER TABLE alarms ADD COLUMN randomSounds TEXT")
+            }
+        }
+
+        /** v1.3: one-off alarms that delete themselves once dismissed. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE alarms ADD COLUMN deleteAfterDismiss INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

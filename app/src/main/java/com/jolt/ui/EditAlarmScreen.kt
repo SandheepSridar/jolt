@@ -111,6 +111,7 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
     var objectId by rememberSaveable { mutableStateOf<Long?>(null) }
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var randomSounds by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteAfterDismiss by rememberSaveable { mutableStateOf(false) }
     var pickedDefaultMission by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var choosingSoundMode by remember { mutableStateOf(false) }
@@ -124,7 +125,7 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
                 hour = it.hour; minute = it.minute; days = it.days; label = it.label
                 soundUri = it.soundUri; vibrate = it.vibrate; snoozeMinutes = it.snoozeMinutes
                 maxSnoozes = it.maxSnoozes; objectId = it.objectId; category = it.category
-                randomSounds = it.randomSounds
+                randomSounds = it.randomSounds; deleteAfterDismiss = it.deleteAfterDismiss
                 loaded = true
             }
         }
@@ -153,6 +154,7 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
             hour = hour, minute = minute, days = days, label = label.trim(), soundUri = soundUri,
             vibrate = vibrate, snoozeMinutes = snoozeMinutes, maxSnoozes = maxSnoozes,
             objectId = objectId, category = category, randomSounds = randomSounds, enabled = true,
+            deleteAfterDismiss = deleteAfterDismiss && days == 0,
         )
         repo.saveAlarm(alarm)
         val next = AlarmTimes.nextOccurrence(hour, minute, days, ZonedDateTime.now())
@@ -201,6 +203,20 @@ fun EditAlarmScreen(alarmId: Long, newObjectId: Long?, onDone: () -> Unit, onAdd
 
             Section("Repeat")
             DayToggles(days) { days = it }
+            if (days == 0) {
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier.padding(top = 12.dp),
+                ) {
+                    ListItem(
+                        headlineContent = { Text("Delete after dismissing") },
+                        supportingContent = { Text("Remove this alarm once you turn it off") },
+                        trailingContent = { Switch(checked = deleteAfterDismiss, onCheckedChange = { deleteAfterDismiss = it }) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    )
+                }
+            }
 
             Section("Mission")
             MissionPicker(

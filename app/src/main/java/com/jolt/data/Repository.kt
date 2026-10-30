@@ -54,7 +54,10 @@ class Repository(
     }
 
     suspend fun dismiss(id: Long) {
-        db.alarms().get(id)?.let { db.alarms().update(it.copy(snoozedUntil = null, snoozeCount = 0)) }
+        db.alarms().get(id)?.let {
+            if (it.deleteAfterDismiss && !it.repeats) db.alarms().delete(it)
+            else db.alarms().update(it.copy(snoozedUntil = null, snoozeCount = 0))
+        }
         scheduler.scheduleNext()
     }
 
